@@ -21,6 +21,7 @@ def retrieve_relevant_courses(query, top_k=3):
     return [c for _, c in scored[:top_k]]
 
 
+
 def build_context(courses):
     text = ""
     for c in courses:
