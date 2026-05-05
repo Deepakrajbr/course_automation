@@ -1,4 +1,6 @@
 import os
+import re
+from datetime import datetime
 from openai import OpenAI
 from dotenv import load_dotenv
 
@@ -11,25 +13,30 @@ load_dotenv()
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
-# 🔥 INTENT: lead detection (simple + powerful)
+EXACT_LIST_TRIGGERS = [
+    "courses",
+    "list courses",
+    "show courses",
+    "what courses",
+    "available courses",
+    "what do you offer",
+    "what programs"
+]
+
+
 def is_lead_intent(message):
-    msg = message.lower()
-    return any(x in msg for x in ["join", "enroll", "interested", "admission", "register"])
+    return any(x in message for x in ["join", "enroll", "interested", "admission", "register"])
 
 
-# 🤖 AI with RAG + MEMORY (IMPROVED)
+# AI with RAG + Memory
 def ai_generate(phone, user_message):
     try:
-        # 🔎 RAG
         courses = retrieve_relevant_courses(user_message)
 
-        # 🚨 if nothing found
         if not courses:
-            return "Sorry, I couldn't find relevant course info. Can you be more specific?"
+            return "I can help you explore courses or guide you based on your goals. What are you interested in?"
 
         context = build_context(courses)
-
-        # 🧠 MEMORY
         history = get_history(phone)
 
         messages = [
@@ -37,14 +44,11 @@ def ai_generate(phone, user_message):
                 "role": "system",
                 "content": (
                     "You are a friendly course advisor.\n"
-                    "Speak naturally like a human.\n"
+                    "Speak naturally.\n"
                     "Guide users step by step.\n"
-                    "Use previous conversation context.\n"
-                    "Understand user intent.\n"
-                    "Recommend best course based on needs.\n"
-                    "ONLY use COURSE DATA below.\n"
-                    "If answer not found, say you don't know.\n\n"
-                    f"COURSE DATA:\n{context}"
+                    "Recommend best course.\n"
+                    "Use ONLY provided data.\n\n"
+                    f"{context}"
                 )
             }
         ]
@@ -55,12 +59,11 @@ def ai_generate(phone, user_message):
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=messages,
-            max_tokens=150
+            max_tokens=300  
         )
 
         reply = response.choices[0].message.content
 
-        # 🧠 save memory
         append_message(phone, "user", user_message)
         append_message(phone, "assistant", reply)
 
@@ -71,13 +74,12 @@ def ai_generate(phone, user_message):
         return "Sorry, I’m having trouble answering right now."
 
 
-# 📋 List courses (small improvement)
 def list_courses():
     courses = get_all_courses()
     return "We offer these courses:\n\n" + "\n".join([f"• {c['name'].title()}" for c in courses])
 
 
-# 🧠 MAIN HANDLER (RAG-FIRST LOGIC)
+# Main handler
 def handle_message(phone, message):
     raw_message = message
     message = message.lower().strip()
@@ -99,58 +101,77 @@ def handle_message(phone, message):
 
     step = user.get("step", "normal")
 
-    # 🔥 STEP: LEAD CAPTURE
+    # GREETING
+    if message in ["hi", "hello", "hey"]:
+        return "Hi 👋 How can I help you today? You can ask about courses or career guidance."
+
+    
+    if message in EXACT_LIST_TRIGGERS:
+        return list_courses()
+
+    # LEAD CAPTURE 
     if step == "lead_capture":
-        if "," not in raw_message:
+        parts = [p.strip() for p in raw_message.split(",")]
+
+        if len(parts) < 2:
             return "Please send details like: Name, Phone"
 
-        parts = raw_message.split(",")
+        name = parts[0]
+        phone_no = parts[1]
+
+        email = None
+        for p in parts:
+            if "@" in p:
+                email = p
 
         lead = {
             "user_phone": phone,
-            "name": parts[0].strip(),
-            "contact": parts[1].strip() if len(parts) > 1 else "",
+            "name": name,
+            "contact": phone_no,
+            "email": email,
             "course": user.get("selected_course"),
-            "status": "new"
+            "status": "new",
+            "created_at": datetime.utcnow() 
         }
 
         leads_collection.insert_one(lead)
 
+        
         users_collection.update_one(
             {"phone": phone},
-            {"$set": {"step": "done"}}
+            {"$set": {"step": "normal"}}
         )
 
         return "🎉 Thank you! Our team will contact you shortly."
 
-    # 🔥 LEAD INTENT
+    # LEAD INTENT
     if is_lead_intent(message):
         users_collection.update_one(
             {"phone": phone},
-            {"$set": {"step": "lead_capture"}}
+            {"$set": {
+                "step": "lead_capture",
+                "selected_course": user.get("selected_course")  
+            }}
         )
 
-        return "Great! 😊 Please share your Name and Phone (comma separated)."
+        return "Great! 😊 Please share your Name, Phone (comma separated)."
 
-    # 🔥 OPTIONAL: course list trigger (soft match)
-    if any(x in message for x in ["course", "program", "learn", "study"]):
-        return list_courses()
+    
+    if len(message) > 3 and step != "lead_capture":
+        course = find_course_by_name(message)
+        if course:
+            users_collection.update_one(
+                {"phone": phone},
+                {"$set": {"selected_course": course["name"]}}
+            )
 
-    # 🔥 COURSE MATCH (quick path)
-    course = find_course_by_name(message)
-    if course:
-        users_collection.update_one(
-            {"phone": phone},
-            {"$set": {"selected_course": course["name"]}}
-        )
+            return (
+                f"{course['name'].title()} Course:\n"
+                f"Duration: {course['duration']}\n"
+                f"Price: {course['price']}\n"
+                f"{course['description']}\n\n"
+                "If you're interested, just say 'I want to join' 😊"
+            )
 
-        return (
-            f"{course['name'].title()} Course:\n"
-            f"Duration: {course['duration']}\n"
-            f"Price: {course['price']}\n"
-            f"{course['description']}\n\n"
-            "If you're interested, just say 'I want to join' 😊"
-        )
-
-    # 🔥 DEFAULT → RAG handles everything
+    # FINAL FALLBACK → AI
     return ai_generate(phone, raw_message)
