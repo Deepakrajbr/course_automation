@@ -27,21 +27,21 @@ This system uses a WhatsApp-based interface to:
 
 ##  Architecture
 User (WhatsApp)
-↓
+     ↓
 Twilio (Webhook)
-↓
+     ↓
 n8n (Workflow Automation)
-↓
+     ↓
 FastAPI Backend (Controller)
-↓
+     ↓
 Service Layer:
 
 Chat Logic
 RAG (Retrieval Augmented Generation)
 Memory (Conversation Context)
-↓
+    ↓
 MongoDB (Database)
-↓
+   ↓
 Response → WhatsApp
 
 
