@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import Response
 from pydantic import BaseModel
 from services.chat_service import handle_message
+from xml.sax.saxutils import escape
 
 app = FastAPI()
 
@@ -26,9 +27,11 @@ async def whatsapp_webhook(request: Request):
 
     reply = handle_message(phone, message)
 
+    safe_reply = escape(reply)
+    
     twiml = f"""
 <Response>
-    <Message>{reply}</Message>
+    <Message>{safe_reply}</Message>
 </Response>
 """
 
