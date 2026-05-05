@@ -1,3 +1,46 @@
+# 🔐 Environment variables
 .env
+.env.*
+
+# 🐍 Python cache
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+
+# 📦 Virtual environments
+.env_assist/
+venv/
+env/
+
+# 🧪 Logs
+*.log
+
+# 🗄️ Database files (if local)
+*.db
+*.sqlite3
+
+# 📁 OS files
+.DS_Store
+Thumbs.db
+
+# 🧰 VS Code
+.vscode/
+
+# 🧠 Jupyter
+.ipynb_checkpoints/
+
+# 📦 Build files
+dist/
+build/
+
+# 🔑 Secrets
+*.key
+*.pem
+
+# 🧾 Coverage
+.coverage
+htmlcov/
+
+# 🐳 Docker (optional)
+*.pid
